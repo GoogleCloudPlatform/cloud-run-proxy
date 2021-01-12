@@ -32,13 +32,13 @@ permissions on the target service.
 1.  Install the proxy:
 
     ```sh
-    go get github.com/sethvargo/cloud-sql-proxy
+    go get github.com/sethvargo/cloud-run-proxy
     ```
 
 1.  Start the proxy:
 
     ```sh
-    cloud-sql-proxy -host https://my-service.a.run.app
+    cloud-run-proxy -host https://my-service.a.run.app
     ```
 
 1.  Point your browser or `curl` at http://localhost:8080!
@@ -49,7 +49,7 @@ permissions on the target service.
 Change the local bind address:
 
 ```sh
-cloud-sql-proxy -bind "127.0.0.1:1234"
+cloud-run-proxy -bind "127.0.0.1:1234"
 ```
 
 Obligatory security note: do not bind to 0.0.0.0 or your public IP. Anyone on
@@ -59,5 +59,5 @@ bind to a loopback.
 Override the token (useful if you don't have gcloud installed):
 
 ```sh
-cloud-sql-proxy -token "yc..."
+cloud-run-proxy -token "yc..."
 ```
