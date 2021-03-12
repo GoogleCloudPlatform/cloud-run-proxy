@@ -148,6 +148,20 @@ func realMain() error {
 
 	// Configure error handling.
 	proxy.ModifyResponse = func(r *http.Response) error {
+		// In case of redirection, make sure the local address is still used for host.
+		location := r.Header.Get("Location")
+		if location != "" {
+			locationUrl, err := url.Parse(location)
+			// If location is not a valid url, ignore it.
+			if err == nil && locationUrl.Host == u.Host {
+				// If it has location header && the location url host is the proxied host,
+				// change it to local address with http.
+				locationUrl.Scheme = "http"
+				locationUrl.Host = *flagBind
+				r.Header.Set("Location", locationUrl.String())
+			}
+		}
+
 		ctx := r.Request.Context()
 		if err, ok := ctx.Value(contextKeyError).(error); ok && err != nil {
 			return fmt.Errorf("[PROXY ERROR] %w", err)
