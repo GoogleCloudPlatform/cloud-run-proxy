@@ -22,6 +22,8 @@ the URL directly, except that it adds your local user's authentication info
 
 If you're familiar with the Cloud SQL Proxy, it's like that, but for Cloud Run.
 
+**Cloud Run Proxy is not an officially supported Google product.**
+
 ## Usage
 
 Note: you must install and authenticated to the [Google Cloud

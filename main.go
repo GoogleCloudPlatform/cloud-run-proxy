@@ -1,4 +1,4 @@
-// Copyright Seth Vargo
+// Copyright 2021 the Cloud Run Proxy Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -37,7 +38,7 @@ const contextKeyError = contextKey("error")
 const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
 var (
-	flagHost  = flag.String("host", "", "host to proxy to")
+	flagHost  = flag.String("host", "", "Cloud Run host for which to proxy")
 	flagBind  = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
 	flagToken = flag.String("token", "", "override OIDC token")
 )
@@ -50,8 +51,6 @@ func main() {
 }
 
 func realMain() error {
-	ctx := context.Background()
-
 	// Parse flags.
 	flag.Parse()
 	if *flagHost == "" {
@@ -61,51 +60,75 @@ func realMain() error {
 		return fmt.Errorf("missing -addr")
 	}
 
-	// Get the token source. If a static token is supplied, create a static token
-	// source. Otherwise attempt to find credentials via ADC.
-	var tokenSource oauth2.TokenSource
-	if providedToken := *flagToken; providedToken != "" {
-		token := &oauth2.Token{}
-		token = token.WithExtra(map[string]interface{}{"id_token": providedToken})
-		tokenSource = oauth2.StaticTokenSource(token)
-	} else {
-		// Create token source. Since this proxy is designed to run on a local laptop,
-		// this is probably going to come from gcloud.
-		var err error
-		tokenSource, err = google.DefaultTokenSource(ctx, cloudPlatformScope)
-		if err != nil {
-			return fmt.Errorf("failed to get default token source: %w", err)
-		}
-	}
-
-	// Create re-usable token source.
-	tokenSource = oauth2.ReuseTokenSource(nil, tokenSource)
-
-	// Parse the URL, handling the case where it's a real URL (https://foo.bar) or
-	// just a host (foo.bar). If it's just a host, TLS is assumed.
-	u, err := url.Parse(*flagHost)
+	// Get the best token source.
+	tokenSource, err := findTokenSource(*flagToken)
 	if err != nil {
-		return fmt.Errorf("failed to parse url: %w", err)
+		return fmt.Errorf("failed to find token source: %w", err)
 	}
-	if u.Scheme == "" {
-		u.Scheme = "https"
 
-		parts := strings.SplitN(u.Path, "/", 2)
-		switch len(parts) {
-		case 0:
-			u.Host = ""
-			u.Path = ""
-		case 1:
-			u.Host = parts[0]
-			u.Path = ""
-		case 2:
-			u.Host = parts[0]
-			u.Path = parts[1]
+	// Build the remote host URL.
+	host, err := smartBuildHost(*flagHost)
+	if err != nil {
+		return fmt.Errorf("failed to parse host URL: %w", err)
+	}
+
+	// Build the local bind URL.
+	bindHost, bindPort, err := net.SplitHostPort(*flagBind)
+	if err != nil {
+		return fmt.Errorf("failed to parse bind address: %w", err)
+	}
+	bind := &url.URL{
+		Scheme: "http",
+		Host:   bindHost + ":" + bindPort,
+	}
+
+	// Construct the proxy.
+	proxy := buildProxy(host, bind, tokenSource)
+
+	// Create server.
+	server := &http.Server{
+		Addr:    bind.Host,
+		Handler: proxy,
+	}
+
+	// Start server in background.
+	errCh := make(chan error, 1)
+	go func() {
+		fmt.Fprintf(os.Stderr, "%s proxies to %s\n", bind, host)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			select {
+			case errCh <- err:
+			default:
+			}
 		}
+	}()
+
+	// Signal on stop.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	// Wait for error or signal.
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("server error: %w", err)
+	case <-stop:
+		fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
 	}
 
+	// Attempt graceful shutdown.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shutdown server: %w", err)
+	}
+	return nil
+}
+
+// buildProxy builds the reverse proxy server, forwarding requests on bind to
+// the provided host.
+func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.ReverseProxy {
 	// Build and configure the proxy.
-	proxy := httputil.NewSingleHostReverseProxy(u)
+	proxy := httputil.NewSingleHostReverseProxy(host)
 
 	// Configure the director.
 	originalDirector := proxy.Director
@@ -115,8 +138,8 @@ func realMain() error {
 
 		// Override host - this is not done by the default director, but Cloud Run
 		// requires it.
-		r.Header.Set("Host", u.Host)
-		r.Host = u.Host
+		r.Header.Set("Host", host.Host)
+		r.Host = host.Host
 
 		ctx := r.Context()
 
@@ -148,16 +171,15 @@ func realMain() error {
 
 	// Configure error handling.
 	proxy.ModifyResponse = func(r *http.Response) error {
-		// In case of redirection, make sure the local address is still used for host.
+		// In case of redirection, make sure the local address is still used for
+		// host. If it has location header && the location url host is the proxied
+		// host, change it to local address with http.
 		location := r.Header.Get("Location")
 		if location != "" {
 			locationUrl, err := url.Parse(location)
-			// If location is not a valid url, ignore it.
-			if err == nil && locationUrl.Host == u.Host {
-				// If it has location header && the location url host is the proxied host,
-				// change it to local address with http.
-				locationUrl.Scheme = "http"
-				locationUrl.Host = *flagBind
+			if err == nil && locationUrl.Host == host.Host {
+				locationUrl.Scheme = bind.Scheme
+				locationUrl.Host = bind.Host
 				r.Header.Set("Location", locationUrl.String())
 			}
 		}
@@ -173,41 +195,67 @@ func realMain() error {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	// Create server.
-	server := &http.Server{
-		Addr:    *flagBind,
-		Handler: proxy,
+	return proxy
+}
+
+// findTokenSource fetches the reusable/cached oauth2 token source. If t is
+// provided, that token is used as a static value. Othwerise, this attempts to
+// get the renewable token from the environment (including via Application
+// Default Credentials).
+func findTokenSource(t string) (oauth2.TokenSource, error) {
+	// Prefer supplied value, usually from the flag.
+	if t != "" {
+		token := new(oauth2.Token).WithExtra(map[string]interface{}{
+			"id_token": t,
+		})
+		return oauth2.StaticTokenSource(token), nil
 	}
 
-	// Start server in background.
-	errCh := make(chan error, 1)
-	go func() {
-		fmt.Fprintf(os.Stderr, "%s proxies to %s\n", *flagBind, u)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			select {
-			case errCh <- err:
-			default:
-			}
+	// Try and find the default token from ADC.
+	ctx := context.Background()
+	tokenSource, err := google.DefaultTokenSource(ctx, cloudPlatformScope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get default token source: %w", err)
+	}
+	return oauth2.ReuseTokenSource(nil, tokenSource), nil
+}
+
+// smartBuildHost parses the URL, handling the case where it's a real URL
+// (https://foo.bar) or just a host (foo.bar). If it's just a host, the URL is
+// assumed to be TLS.
+func smartBuildHost(host string) (*url.URL, error) {
+	u, err := url.Parse(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse url: %w", err)
+	}
+
+	if u.Scheme == "" {
+		u.Scheme = "https"
+
+		parts := strings.SplitN(u.Path, "/", 2)
+		switch len(parts) {
+		case 0:
+			u.Host = ""
+			u.Path = ""
+		case 1:
+			u.Host = parts[0]
+			u.Path = ""
+		case 2:
+			u.Host = parts[0]
+			u.Path = parts[1]
 		}
-	}()
-
-	// Signal on stop.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
-
-	// Wait for error or signal.
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("server error: %w", err)
-	case <-stop:
-		fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
 	}
 
-	// Attempt graceful shutdown.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("failed to shutdown server: %w", err)
+	u.Host = strings.TrimSpace(u.Host)
+	if u.Host == "" {
+		return nil, fmt.Errorf("invalid url %q (missing host)", host)
 	}
-	return nil
+
+	u.Path = strings.TrimSpace(u.Path)
+	if u.Path == "/" {
+		u.RawPath = ""
+		u.Path = ""
+	}
+
+	return u, nil
 }
