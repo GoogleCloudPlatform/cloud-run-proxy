@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package main is the entrypoint for cloud-run-proxy. It starts the proxy
+// server.
 package main
 
 import (
@@ -176,11 +178,11 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		// host, change it to local address with http.
 		location := r.Header.Get("Location")
 		if location != "" {
-			locationUrl, err := url.Parse(location)
-			if err == nil && locationUrl.Host == host.Host {
-				locationUrl.Scheme = bind.Scheme
-				locationUrl.Host = bind.Host
-				r.Header.Set("Location", locationUrl.String())
+			locationURL, err := url.Parse(location)
+			if err == nil && locationURL.Host == host.Host {
+				locationURL.Scheme = bind.Scheme
+				locationURL.Host = bind.Host
+				r.Header.Set("Location", locationURL.String())
 			}
 		}
 
