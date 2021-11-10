@@ -59,7 +59,7 @@ func realMain() error {
 		return fmt.Errorf("missing -host")
 	}
 	if *flagBind == "" {
-		return fmt.Errorf("missing -addr")
+		return fmt.Errorf("missing -bind")
 	}
 
 	// Get the best token source.
