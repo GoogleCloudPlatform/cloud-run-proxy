@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"time"
 
@@ -39,10 +40,15 @@ const contextKeyError = contextKey("error")
 
 const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
+const Version = "0.1.0"
+const OSArch = runtime.GOOS + "/" + runtime.GOARCH
+const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
+
 var (
-	flagHost  = flag.String("host", "", "Cloud Run host for which to proxy")
-	flagBind  = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
-	flagToken = flag.String("token", "", "override OIDC token")
+	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
+	flagBind             = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
+	flagToken            = flag.String("token", "", "override OIDC token")
+	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
 )
 
 func main() {
@@ -165,6 +171,18 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
 				fmt.Errorf("id_token is not a string: %T", idTokenRaw)))
 			return
+		}
+
+		// Set a custom user-agent header.
+		if *flagPrependUserAgent {
+			ua := r.Header.Get("User-Agent")
+			if ua == "" {
+				ua = UserAgent
+			} else {
+				ua = UserAgent + " " + ua
+			}
+
+			r.Header.Set("User-Agent", ua)
 		}
 
 		// Set the bearer token to be the id token
