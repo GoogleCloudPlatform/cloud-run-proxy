@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-module github.com/sethvargo/cloud-run-proxy
+module github.com/GoogleCloudPlatform/cloud-run-proxy
 
-go 1.16
+go 1.17
+
+require golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 
 require (
-	cloud.google.com/go v0.81.0 // indirect
+	cloud.google.com/go v0.99.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	golang.org/x/net v0.0.0-20210510120150-4163338589ed // indirect
-	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
+	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
+	google.golang.org/appengine v1.6.7 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
 )
