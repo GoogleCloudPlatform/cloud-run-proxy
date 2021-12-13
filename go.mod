@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-module github.com/sethvargo/cloud-run-proxy
+module github.com/GoogleCloudPlatform/cloud-run-proxy
 
 go 1.16
 
