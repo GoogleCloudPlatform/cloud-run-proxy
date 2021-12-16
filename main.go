@@ -87,7 +87,7 @@ func realMain() error {
 	}
 	bind := &url.URL{
 		Scheme: "http",
-		Host:   bindHost + ":" + bindPort,
+		Host:   net.JoinHostPort(bindHost, bindPort),
 	}
 
 	// Construct the proxy.
