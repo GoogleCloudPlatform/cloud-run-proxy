@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -103,7 +104,7 @@ func realMain() error {
 	errCh := make(chan error, 1)
 	go func() {
 		fmt.Fprintf(os.Stderr, "%s proxies to %s\n", bind, host)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			select {
 			case errCh <- err:
 			default:
