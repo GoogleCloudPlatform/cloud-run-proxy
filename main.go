@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -53,7 +54,7 @@ var (
 
 func main() {
 	if err := realMain(); err != nil {
-		fmt.Fprint(os.Stderr, err.Error(), "\n")
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
@@ -87,7 +88,7 @@ func realMain() error {
 	}
 	bind := &url.URL{
 		Scheme: "http",
-		Host:   bindHost + ":" + bindPort,
+		Host:   net.JoinHostPort(bindHost, bindPort),
 	}
 
 	// Construct the proxy.
@@ -103,7 +104,7 @@ func realMain() error {
 	errCh := make(chan error, 1)
 	go func() {
 		fmt.Fprintf(os.Stderr, "%s proxies to %s\n", bind, host)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			select {
 			case errCh <- err:
 			default:
