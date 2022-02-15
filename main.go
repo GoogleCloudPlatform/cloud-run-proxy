@@ -29,10 +29,12 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/idtoken"
 )
 
 type contextKey string
@@ -48,18 +50,24 @@ const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
 var (
 	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
 	flagBind             = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
+	flagAudience         = flag.String("audience", "", "override JWT audience value (aud)")
 	flagToken            = flag.String("token", "", "override OIDC token")
 	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
 )
 
 func main() {
-	if err := realMain(); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	if err := realMain(ctx); err != nil {
+		cancel()
+
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
 
-func realMain() error {
+func realMain(ctx context.Context) error {
 	// Parse flags.
 	flag.Parse()
 	if *flagHost == "" {
@@ -69,16 +77,25 @@ func realMain() error {
 		return fmt.Errorf("missing -bind")
 	}
 
-	// Get the best token source.
-	tokenSource, err := findTokenSource(*flagToken)
-	if err != nil {
-		return fmt.Errorf("failed to find token source: %w", err)
-	}
-
 	// Build the remote host URL.
 	host, err := smartBuildHost(*flagHost)
 	if err != nil {
 		return fmt.Errorf("failed to parse host URL: %w", err)
+	}
+
+	// Compute the audience, default to the host. However, there might be cases
+	// where you want to specify a custom aud (such as when accessing through a
+	// load balancer).
+	audience := *flagAudience
+	if audience == "" {
+		audience = host.String()
+	}
+
+	// Get the best token source. Cloud Run expects the audience parameter to be
+	// the URL of the service.
+	tokenSource, err := findTokenSource(ctx, *flagToken, audience)
+	if err != nil {
+		return fmt.Errorf("failed to find token source: %w", err)
 	}
 
 	// Build the local bind URL.
@@ -112,15 +129,11 @@ func realMain() error {
 		}
 	}()
 
-	// Signal on stop.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
-
-	// Wait for error or signal.
+	// Wait for stop
 	select {
 	case err := <-errCh:
 		return fmt.Errorf("server error: %w", err)
-	case <-stop:
+	case <-ctx.Done():
 		fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
 	}
 
@@ -160,17 +173,11 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 			return
 		}
 
-		// Get the id_token from the oauth token.
-		idTokenRaw := token.Extra("id_token")
-		if idTokenRaw == nil {
+		// Get the id_token.
+		idToken := token.AccessToken
+		if idToken == "" {
 			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
 				fmt.Errorf("missing id_token")))
-			return
-		}
-		idToken, ok := idTokenRaw.(string)
-		if !ok {
-			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
-				fmt.Errorf("id_token is not a string: %T", idTokenRaw)))
 			return
 		}
 
@@ -219,26 +226,58 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 	return proxy
 }
 
-// findTokenSource fetches the reusable/cached oauth2 token source. If t is
-// provided, that token is used as a static value. Othwerise, this attempts to
-// get the renewable token from the environment (including via Application
-// Default Credentials).
-func findTokenSource(t string) (oauth2.TokenSource, error) {
+// findTokenSource fetches the reusable/cached oauth2 token source. If rawToken
+// is provided, that token is used as a static value and the audience parameter
+// is ignored. Othwerise, this attempts to get the renewable token from the
+// environment (via Application Default Credentials).
+func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.TokenSource, error) {
 	// Prefer supplied value, usually from the flag.
-	if t != "" {
-		token := new(oauth2.Token).WithExtra(map[string]interface{}{
-			"id_token": t,
-		})
+	if rawToken != "" {
+		token := &oauth2.Token{AccessToken: rawToken}
 		return oauth2.StaticTokenSource(token), nil
 	}
 
-	// Try and find the default token from ADC.
-	ctx := context.Background()
-	tokenSource, err := google.DefaultTokenSource(ctx, cloudPlatformScope)
+	// Try to use the idtoken package, which will use the metadata service.
+	// However, the idtoken package does not work with gcloud, so we need to
+	// handle that case by falling back to default ADC. However, the default ADC
+	// has a token at a different path, so we construct a custom token source for
+	// this edge case.
+	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get default token source: %w", err)
+		if !strings.Contains(err.Error(), "credential must be service_account") {
+			return nil, fmt.Errorf("failed to get idtoken source: %w", err)
+		}
+
+		tokenSource, err = google.DefaultTokenSource(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get default token source: %w", err)
+		}
+		tokenSource = &idTokenFromDefaultTokenSource{TokenSource: tokenSource}
 	}
 	return oauth2.ReuseTokenSource(nil, tokenSource), nil
+}
+
+type idTokenFromDefaultTokenSource struct {
+	TokenSource oauth2.TokenSource
+}
+
+// Token extracts the id_token field from ADC from a default token source and
+// puts the value into the AccessToken field.
+func (s *idTokenFromDefaultTokenSource) Token() (*oauth2.Token, error) {
+	token, err := s.TokenSource.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return nil, fmt.Errorf("missing id_token")
+	}
+
+	return &oauth2.Token{
+		AccessToken: idToken,
+		Expiry:      token.Expiry,
+	}, nil
 }
 
 // smartBuildHost parses the URL, handling the case where it's a real URL

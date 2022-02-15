@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -43,6 +44,8 @@ func testRandomPort(tb testing.TB) int {
 func TestBuildProxy(t *testing.T) {
 	t.Parallel()
 
+	ctx := context.Background()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.Header.Get("Authorization"), "Bearer mytoken"; got != want {
@@ -62,7 +65,7 @@ func TestBuildProxy(t *testing.T) {
 		Host:   fmt.Sprintf("localhost:%d", testRandomPort(t)),
 	}
 
-	src, err := findTokenSource("mytoken")
+	src, err := findTokenSource(ctx, "mytoken", "aud")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +84,12 @@ func TestBuildProxy(t *testing.T) {
 func TestFindTokenSource(t *testing.T) {
 	t.Parallel()
 
+	ctx := context.Background()
+
 	t.Run("static", func(t *testing.T) {
 		t.Parallel()
 
-		src, err := findTokenSource("mytoken")
+		src, err := findTokenSource(ctx, "mytoken", "aud")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +99,7 @@ func TestFindTokenSource(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if got, want := token.Extra("id_token"), "mytoken"; got != want {
+		if got, want := token.AccessToken, "mytoken"; got != want {
 			t.Errorf("expected %q to be %q", got, want)
 		}
 	})
