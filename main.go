@@ -238,16 +238,20 @@ func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.Tok
 	}
 
 	// Try to use the idtoken package, which will use the metadata service.
-	// However, the idtoken package does not work with gcloud, so we need to
-	// handle that case by falling back to default ADC. However, the default ADC
-	// has a token at a different path, so we construct a custom token source for
-	// this edge case.
+	// However, the idtoken package does not work with gcloud's ADC, so we need to
+	// handle that case by falling back to default ADC search. However, the
+	// default ADC has a token at a different path, so we construct a custom token
+	// source for this edge case.
 	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
 	if err != nil {
+		// Return any unexpected error.
 		if !strings.Contains(err.Error(), "credential must be service_account") {
 			return nil, fmt.Errorf("failed to get idtoken source: %w", err)
 		}
 
+		// If we got this far, it means that we found ADC, but the ADC was supplied
+		// by a gcloud "authorized_user" instead of a service account. Thus we
+		// fallback to the
 		tokenSource, err = google.DefaultTokenSource(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default token source: %w", err)
