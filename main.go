@@ -251,7 +251,7 @@ func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.Tok
 
 		// If we got this far, it means that we found ADC, but the ADC was supplied
 		// by a gcloud "authorized_user" instead of a service account. Thus we
-		// fallback to the
+		// fallback to the default ADC search.
 		tokenSource, err = google.DefaultTokenSource(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get default token source: %w", err)
