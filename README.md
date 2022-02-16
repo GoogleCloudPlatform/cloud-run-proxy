@@ -63,3 +63,15 @@ Override the token (useful if you don't have gcloud installed):
 ```sh
 cloud-run-proxy -token "yc..."
 ```
+
+Specify a custom audience:
+
+```sh
+cloud-run-proxy -audience "https://my-service-daga283.run.app"
+```
+
+Note: when running on Compute Engine or other services with a metadata service, the audience defaults to the host URL. If you are accessing your Cloud Run service through a load balancer with a vanity domain, you must specify the audience value as the non-vanity URL of your service:
+
+```sh
+cloud-run-proxy -host "https://custom-domain.com" -audience "https://my-service-daga283.run.app"
+```
