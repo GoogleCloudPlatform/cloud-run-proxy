@@ -47,6 +47,8 @@ const Version = "0.1.0"
 const OSArch = runtime.GOOS + "/" + runtime.GOARCH
 const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
 
+const ADCHintMessage = "If you're trying to authenticate using gcloud, try running `gcloud auth login --update-adc` first then restart the proxy."
+
 var (
 	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
 	flagBind             = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
@@ -169,7 +171,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		token, err := tokenSource.Token()
 		if err != nil {
 			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
-				fmt.Errorf("failed to get token: %w", err)))
+				fmt.Errorf("failed to get token: %w\n\n%s", err, ADCHintMessage)))
 			return
 		}
 
