@@ -39,14 +39,15 @@ import (
 
 type contextKey string
 
-const (
-	contextKeyError    = contextKey("error")
-	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
-	Version            = "0.1.0"
-	OSArch             = runtime.GOOS + "/" + runtime.GOARCH
-	UserAgent          = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
-	ADCHintMessage     = "Try running `gcloud auth login --update-adc` first then restart the proxy."
-)
+const contextKeyError = contextKey("error")
+
+const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
+
+const Version = "0.1.0"
+const OSArch = runtime.GOOS + "/" + runtime.GOARCH
+const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
+
+const ADCHintMessage = "If you're trying to authenticate using gcloud, try running `gcloud auth login --update-adc` first then restart the proxy."
 
 var (
 	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
