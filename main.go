@@ -55,6 +55,7 @@ var (
 	flagAudience         = flag.String("audience", "", "override JWT audience value (aud)")
 	flagToken            = flag.String("token", "", "override OIDC token")
 	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
+	flagServerUpTime     = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
 )
 
 func main() {
@@ -77,6 +78,14 @@ func realMain(ctx context.Context) error {
 	}
 	if *flagBind == "" {
 		return fmt.Errorf("missing -bind")
+	}
+	var d time.Duration
+	if *flagServerUpTime != "" {
+		var err error
+		d, err = time.ParseDuration(*flagServerUpTime)
+		if err != nil {
+			return fmt.Errorf("error parsing -server-up-time: %w", err)
+		}
 	}
 
 	// Build the remote host URL.
@@ -132,11 +141,21 @@ func realMain(ctx context.Context) error {
 	}()
 
 	// Wait for stop
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("server error: %w", err)
-	case <-ctx.Done():
-		fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
+	if *flagServerUpTime != "" {
+		select {
+		case err := <-errCh:
+			return fmt.Errorf("server error: %w", err)
+		case <-time.After(d):
+		case <-ctx.Done():
+			fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
+		}
+	} else {
+		select {
+		case err := <-errCh:
+			return fmt.Errorf("server error: %w", err)
+		case <-ctx.Done():
+			fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
+		}
 	}
 
 	// Attempt graceful shutdown.
