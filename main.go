@@ -80,11 +80,11 @@ func realMain(ctx context.Context) error {
 		return fmt.Errorf("missing -bind")
 	}
 	var d time.Duration
-	var err error
 	if *flagServerUpTime != "" {
+		var err error
 		d, err = time.ParseDuration(*flagServerUpTime)
 		if err != nil {
-			return fmt.Errorf("error parsing -server-up-time: %v", err)
+			return fmt.Errorf("error parsing -server-up-time: %w", err)
 		}
 	}
 
