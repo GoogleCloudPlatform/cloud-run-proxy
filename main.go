@@ -55,7 +55,7 @@ var (
 	flagAudience         = flag.String("audience", "", "override JWT audience value (aud)")
 	flagToken            = flag.String("token", "", "override OIDC token")
 	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
-	flagServerUpMinutes  = flag.Int("server-up-minutes", 0, "Time in minutes the proxy server will run. 0 means unlimited")
+	flagServerUpTime     = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
 )
 
 func main() {
@@ -79,8 +79,13 @@ func realMain(ctx context.Context) error {
 	if *flagBind == "" {
 		return fmt.Errorf("missing -bind")
 	}
-	if *flagServerUpMinutes < 0 {
-		return fmt.Errorf("-server-up-minutes should not be negative")
+	var d time.Duration
+	var err error
+	if *flagServerUpTime != "" {
+		d, err = time.ParseDuration(*flagServerUpTime)
+		if err != nil {
+			return fmt.Errorf("error parsing -server-up-time: %v", err)
+		}
 	}
 
 	// Build the remote host URL.
@@ -136,12 +141,11 @@ func realMain(ctx context.Context) error {
 	}()
 
 	// Wait for stop
-	if *flagServerUpMinutes != 0 {
-		timer := time.NewTimer(time.Duration(*flagServerUpMinutes) * time.Minute)
+	if *flagServerUpTime != "" {
 		select {
 		case err := <-errCh:
 			return fmt.Errorf("server error: %w", err)
-		case <-timer.C:
+		case <-time.After(d):
 		case <-ctx.Done():
 			fmt.Fprint(os.Stderr, "\nserver is shutting down...\n")
 		}
