@@ -189,7 +189,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		// Get the oauth token.
 		token, err := tokenSource.Token()
 		if err != nil {
-			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
+			r = r.WithContext(context.WithValue(ctx, contextKeyError,
 				fmt.Errorf("failed to get token: %w\n\n%s", err, ADCHintMessage)))
 			return
 		}
@@ -197,7 +197,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		// Get the id_token.
 		idToken := token.AccessToken
 		if idToken == "" {
-			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
+			r = r.WithContext(context.WithValue(ctx, contextKeyError,
 				errors.New("missing id_token")))
 			return
 		}
