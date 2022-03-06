@@ -74,10 +74,10 @@ func realMain(ctx context.Context) error {
 	// Parse flags.
 	flag.Parse()
 	if *flagHost == "" {
-		return fmt.Errorf("missing -host")
+		return errors.New("missing -host")
 	}
 	if *flagBind == "" {
-		return fmt.Errorf("missing -bind")
+		return errors.New("missing -bind")
 	}
 	var d time.Duration
 	if *flagServerUpTime != "" {
@@ -198,7 +198,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		idToken := token.AccessToken
 		if idToken == "" {
 			*r = *r.WithContext(context.WithValue(ctx, contextKeyError,
-				fmt.Errorf("missing id_token")))
+				errors.New("missing id_token")))
 			return
 		}
 
@@ -296,7 +296,7 @@ func (s *idTokenFromDefaultTokenSource) Token() (*oauth2.Token, error) {
 
 	idToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		return nil, fmt.Errorf("missing id_token")
+		return nil, errors.New("missing id_token")
 	}
 
 	return &oauth2.Token{
