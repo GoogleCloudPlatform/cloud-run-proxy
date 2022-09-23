@@ -34,7 +34,7 @@ permissions on the target service.
 1.  Install the proxy:
 
     ```sh
-    go get github.com/GoogleCloudPlatform/cloud-run-proxy
+    go install github.com/GoogleCloudPlatform/cloud-run-proxy@latest
     ```
 
 1.  Start the proxy:
