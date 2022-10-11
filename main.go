@@ -27,11 +27,11 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/GoogleCloudPlatform/cloud-run-proxy/internal/version"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/idtoken"
@@ -41,13 +41,9 @@ type contextKey string
 
 const contextKeyError = contextKey("error")
 
-const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
-
-const Version = "0.1.0"
-const OSArch = runtime.GOOS + "/" + runtime.GOARCH
-const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
-
 const ADCHintMessage = "If you're trying to authenticate using gcloud, try running `gcloud auth login --update-adc` first then restart the proxy."
+
+var userAgent = version.Name + "/" + version.Version + " (" + version.OSArch + ")"
 
 var (
 	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
@@ -71,6 +67,14 @@ func main() {
 }
 
 func realMain(ctx context.Context) error {
+	// Quick handle version and help.
+	for _, v := range os.Args {
+		if v == "-v" || v == "-version" || v == "--version" {
+			fmt.Fprintln(os.Stdout, version.HumanVersion)
+			return nil
+		}
+	}
+
 	// Parse flags.
 	flag.Parse()
 	if *flagHost == "" {
@@ -206,9 +210,9 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 		if *flagPrependUserAgent {
 			ua := r.Header.Get("User-Agent")
 			if ua == "" {
-				ua = UserAgent
+				ua = userAgent
 			} else {
-				ua = UserAgent + " " + ua
+				ua = userAgent + " " + ua
 			}
 
 			r.Header.Set("User-Agent", ua)
