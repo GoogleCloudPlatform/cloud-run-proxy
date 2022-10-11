@@ -43,7 +43,7 @@ const contextKeyError = contextKey("error")
 
 const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
-const Version = "0.1.0"
+const Version = "0.3.0"
 const OSArch = runtime.GOOS + "/" + runtime.GOARCH
 const UserAgent = "cloud-run-proxy/" + Version + " (" + OSArch + ")"
 
@@ -56,6 +56,7 @@ var (
 	flagToken            = flag.String("token", "", "override OIDC token")
 	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
 	flagServerUpTime     = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
+	flagVersion          = flag.Bool("version", false, "Print version information")
 )
 
 func main() {
@@ -73,6 +74,11 @@ func main() {
 func realMain(ctx context.Context) error {
 	// Parse flags.
 	flag.Parse()
+	
+	if *flagVersion {
+		return fmt.Errorf("%s: v%s\n", os.Args[0], Version)
+	}
+	
 	if *flagHost == "" {
 		return fmt.Errorf("missing -host")
 	}
