@@ -1,0 +1,61 @@
+# Copyright 2022 the Cloud Run Proxy Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+before:
+  hooks:
+    - 'go mod tidy'
+
+builds:
+  -
+    env:
+      - 'CGO_ENABLED=0'
+      - 'GO111MODULE=on'
+      - 'GOPROXY=https://proxy.golang.org,direct'
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - '-a'
+      - '-trimpath'
+    ldflags:
+      - '-s'
+      - '-w'
+      - '-X={{ .ModulePath }}/internal/version.Name=cloud-run-proxy'
+      - '-X={{ .ModulePath }}/internal/version.Version={{ .Version }}'
+      - '-X={{ .ModulePath }}/internal/version.Commit={{ .Commit }}'
+      - '-extldflags=-static'
+    goos:
+      - 'darwin'
+      - 'linux'
+      - 'windows'
+    goarch:
+      - 'amd64'
+      - 'arm64'
+    binary: 'cloud-run-proxy'
+
+archives:
+  - format: 'tar.gz'
+    name_template: 'cloud-run-proxy_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: 'windows'
+        format: 'zip'
+
+checksum:
+  name_template: 'cloud-run-proxy_{{ .Version }}_SHA512SUMS'
+  algorithm: 'sha512'
+
+changelog:
+  use: 'github'
+
+release:
+  draft: false
+  mode: 'replace'
