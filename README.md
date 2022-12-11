@@ -1,5 +1,17 @@
 # Cloud Run Proxy
 
+**📣 The Cloud Run Proxy functionality is now bundled in the Cloud SDK 🎉!**
+
+```shell
+gcloud beta run services proxy
+```
+
+For more information, see the [proxy documentation][gcloud-docs]. The remainder
+of this README is for users wishing to compile or run the proxy outside of Cloud
+SDK.
+
+---
+
 Cloud Run Proxy is a small proxy to assist in authenticating as an end-user to
 Google Cloud Run. It leverages Cloud Run's existing Cloud IAM integration to
 handle access.
@@ -75,3 +87,5 @@ Note: when running on Compute Engine or other services with a metadata service, 
 ```sh
 cloud-run-proxy -host "https://custom-domain.com" -audience "https://my-service-daga283.run.app"
 ```
+
+[gcloud-docs]: https://cloud.google.com/sdk/gcloud/reference/beta/run/services/proxy
