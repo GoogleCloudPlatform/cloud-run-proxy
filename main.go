@@ -18,6 +18,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,6 +34,8 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/cloud-run-proxy/internal/version"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/idtoken"
@@ -52,6 +56,7 @@ var (
 	flagToken            = flag.String("token", "", "override OIDC token")
 	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
 	flagServerUpTime     = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
+	flagHttp2    	 			 = flag.Bool("http2", false, "Handle http2 requests (allows grpc calls)")
 )
 
 func main() {
@@ -124,13 +129,9 @@ func realMain(ctx context.Context) error {
 	}
 
 	// Construct the proxy.
-	proxy := buildProxy(host, bind, tokenSource)
+	proxy := buildProxy(host, bind, tokenSource, *flagHttp2, nil)
 
-	// Create server.
-	server := &http.Server{
-		Addr:    bind.Host,
-		Handler: proxy,
-	}
+	server := createServer(bind, proxy, *flagHttp2)
 
 	// Start server in background.
 	errCh := make(chan error, 1)
@@ -173,10 +174,23 @@ func realMain(ctx context.Context) error {
 
 // buildProxy builds the reverse proxy server, forwarding requests on bind to
 // the provided host.
-func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.ReverseProxy {
+func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2 bool, caCertificate *x509.Certificate) *httputil.ReverseProxy {
 	// Build and configure the proxy.
 	proxy := httputil.NewSingleHostReverseProxy(host)
-
+	// Use http2 for outgoing connections
+	if enableHttp2{
+		var tlsConfig *tls.Config
+		if caCertificate != nil {
+			caPool := x509.NewCertPool()
+			caPool.AddCert(caCertificate)
+			tlsConfig = &tls.Config{
+        RootCAs:	caPool,
+			}
+		}
+		proxy.Transport = &http2.Transport{
+			TLSClientConfig: tlsConfig,
+		};
+	}
 	// Configure the director.
 	originalDirector := proxy.Director
 	proxy.Director = func(r *http.Request) {
@@ -249,6 +263,21 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource) *httputil.R
 	}
 
 	return proxy
+}
+
+// Create server and wraps proxy with h2c handler if http2 is enabled
+func createServer(bind *url.URL, proxy *httputil.ReverseProxy, enableHttp2 bool) *http.Server {
+	var handler http.Handler
+	handler = proxy
+	if enableHttp2{
+		http2server:= &http2.Server{};
+		handler = h2c.NewHandler(proxy, http2server);
+	}
+	// Create server.
+	return &http.Server{
+		Addr:    bind.Host,
+		Handler: handler,
+	}
 }
 
 // findTokenSource fetches the reusable/cached oauth2 token source. If rawToken
