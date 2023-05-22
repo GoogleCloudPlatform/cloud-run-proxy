@@ -47,10 +47,12 @@ func TestBuildProxy(t *testing.T) {
 	ctx := context.Background()
 
 	mux := http.NewServeMux()
+	called := false
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.Header.Get("Authorization"), "Bearer mytoken"; got != want {
 			t.Errorf("invalid authorization header: expected %q to be %q", got, want)
 		}
+		called = true
 	})
 
 	srv := httptest.NewServer(mux)
@@ -70,7 +72,7 @@ func TestBuildProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	proxy := buildProxy(srvURL, bind, src)
+	proxy := buildProxy(srvURL, bind, src, false, nil)
 
 	t.Run("root", func(t *testing.T) {
 		t.Parallel()
@@ -78,6 +80,9 @@ func TestBuildProxy(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		proxy.ServeHTTP(w, r)
+		if !called{
+			t.Errorf("handler not called")
+		}
 	})
 }
 
@@ -164,4 +169,55 @@ func TestSmartBuildHost(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHttp2(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	called := false
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.Header.Get("Authorization"), "Bearer mytoken"; got != want {
+			t.Errorf("invalid authorization header: expected %q to be %q", got, want)
+		}
+		called = true
+	})
+
+
+	srv := httptest.NewUnstartedServer(mux)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+
+	srvURL, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bind := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("localhost:%d", testRandomPort(t)),
+	}
+
+	src, err := findTokenSource(ctx, "mytoken", "aud")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proxy := buildProxy(srvURL, bind, src, true, srv.Certificate())
+
+	t.Run("root", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+
+		proxy.ServeHTTP(w, r)
+
+		if !called{
+			t.Errorf("handler not called")
+		}
+		defer srv.Close()
+	})
+
 }
