@@ -49,7 +49,7 @@ func TestBuildProxy(t *testing.T) {
 	mux := http.NewServeMux()
 	called := false
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.Header.Get("Authorization"), "Bearer mytoken"; got != want {
+		if got, want := r.Header.Get("X-Serverless-Authorization"), "Bearer mytoken"; got != want {
 			t.Errorf("invalid authorization header: expected %q to be %q", got, want)
 		}
 		called = true
@@ -178,7 +178,7 @@ func TestHttp2(t *testing.T) {
 	mux := http.NewServeMux()
 	called := false
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.Header.Get("Authorization"), "Bearer mytoken"; got != want {
+		if got, want := r.Header.Get("X-Serverless-Authorization"), "Bearer mytoken"; got != want {
 			t.Errorf("invalid authorization header: expected %q to be %q", got, want)
 		}
 		called = true

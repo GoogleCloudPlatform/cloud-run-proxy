@@ -233,7 +233,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2
 		}
 
 		// Set the bearer token to be the id token
-		r.Header.Set("Authorization", "Bearer "+idToken)
+		r.Header.Set("X-Serverless-Authorization", "Bearer "+idToken)
 	}
 
 	// Configure error handling.
