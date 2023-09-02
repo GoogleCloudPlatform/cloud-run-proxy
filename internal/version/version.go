@@ -24,35 +24,30 @@ var (
 	Name = "cloud-run-proxy"
 
 	// Version is the main package version.
-	Version = ""
+	Version = func() string {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			if v := info.Main.Version; v != "" {
+				return v
+			}
+		}
+		return "source"
+	}()
 
 	// Commit is the git sha.
-	Commit = ""
+	Commit = func() string {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" && setting.Value != "" {
+					return setting.Value
+				}
+			}
+		}
+		return "unknown"
+	}()
 
 	// OSArch is the operating system and architecture combination.
 	OSArch = runtime.GOOS + "/" + runtime.GOARCH
 
 	// HumanVersion is the compiled version.
-	HumanVersion = func() string {
-		version := Version
-		if version == "" {
-			version = "source"
-		}
-
-		commit := Commit
-		if commit == "" {
-			if info, ok := debug.ReadBuildInfo(); ok {
-				for _, setting := range info.Settings {
-					if setting.Key == "vcs.revision" {
-						return setting.Value
-					}
-				}
-			}
-		}
-		if commit == "" {
-			commit = "unknown"
-		}
-
-		return Name + " " + version + " (" + commit + ", " + OSArch + ")"
-	}()
+	HumanVersion = Name + " " + Version + " (" + Commit + ", " + OSArch + ")"
 )
