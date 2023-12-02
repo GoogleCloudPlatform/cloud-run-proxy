@@ -50,13 +50,14 @@ const ADCHintMessage = "If you're trying to authenticate using gcloud, try runni
 var userAgent = version.Name + "/" + version.Version + " (" + version.OSArch + ")"
 
 var (
-	flagHost             = flag.String("host", "", "Cloud Run host for which to proxy")
-	flagBind             = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
-	flagAudience         = flag.String("audience", "", "override JWT audience value (aud)")
-	flagToken            = flag.String("token", "", "override OIDC token")
-	flagPrependUserAgent = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
-	flagServerUpTime     = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
-	flagHttp2    	 			 = flag.Bool("http2", false, "Handle http2 requests (allows grpc calls)")
+	flagHost                   = flag.String("host", "", "Cloud Run host for which to proxy")
+	flagBind                   = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
+	flagAudience               = flag.String("audience", "", "override JWT audience value (aud)")
+	flagToken                  = flag.String("token", "", "override OIDC token")
+	flagPrependUserAgent       = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
+	flagServerUpTime           = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
+	flagHttp2                  = flag.Bool("http2", false, "Handle http2 requests (allows grpc calls)")
+	flagUseAuthorizationHeader = flag.Bool("use-authorization-header", false, "Use Authorization header instead of X-Serverless-Authorization")
 )
 
 func main() {
@@ -178,18 +179,18 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2
 	// Build and configure the proxy.
 	proxy := httputil.NewSingleHostReverseProxy(host)
 	// Use http2 for outgoing connections
-	if enableHttp2{
+	if enableHttp2 {
 		var tlsConfig *tls.Config
 		if caCertificate != nil {
 			caPool := x509.NewCertPool()
 			caPool.AddCert(caCertificate)
 			tlsConfig = &tls.Config{
-        RootCAs:	caPool,
+				RootCAs: caPool,
 			}
 		}
 		proxy.Transport = &http2.Transport{
 			TLSClientConfig: tlsConfig,
-		};
+		}
 	}
 	// Configure the director.
 	originalDirector := proxy.Director
@@ -233,7 +234,11 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2
 		}
 
 		// Set the bearer token to be the id token
-		r.Header.Set("X-Serverless-Authorization", "Bearer "+idToken)
+		if *flagUseAuthorizationHeader {
+			r.Header.Set("Authorization", "Bearer "+idToken)
+		} else {
+			r.Header.Set("X-Serverless-Authorization", "Bearer "+idToken)
+		}
 	}
 
 	// Configure error handling.
@@ -269,9 +274,9 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2
 func createServer(bind *url.URL, proxy *httputil.ReverseProxy, enableHttp2 bool) *http.Server {
 	var handler http.Handler
 	handler = proxy
-	if enableHttp2{
-		http2server:= &http2.Server{};
-		handler = h2c.NewHandler(proxy, http2server);
+	if enableHttp2 {
+		http2server := &http2.Server{}
+		handler = h2c.NewHandler(proxy, http2server)
 	}
 	// Create server.
 	return &http.Server{
