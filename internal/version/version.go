@@ -20,21 +20,26 @@ import (
 )
 
 var (
-	// Name is the name of the binary.
-	Name = "cloud-run-proxy"
+	// name is the name of the binary.
+	name string
+	Name = valueOrFallback(name, func() string {
+		return "cloud-run-proxy"
+	})
 
-	// Version is the main package version.
-	Version = func() string {
+	// version is the main package version.
+	version string
+	Version = valueOrFallback(version, func() string {
 		if info, ok := debug.ReadBuildInfo(); ok {
 			if v := info.Main.Version; v != "" {
 				return v
 			}
 		}
 		return "source"
-	}()
+	})
 
-	// Commit is the git sha.
-	Commit = func() string {
+	// commit is the git sha.
+	commit string
+	Commit = valueOrFallback(commit, func() string {
 		if info, ok := debug.ReadBuildInfo(); ok {
 			for _, setting := range info.Settings {
 				if setting.Key == "vcs.revision" && setting.Value != "" {
@@ -43,7 +48,7 @@ var (
 			}
 		}
 		return "unknown"
-	}()
+	})
 
 	// OSArch is the operating system and architecture combination.
 	OSArch = runtime.GOOS + "/" + runtime.GOARCH
@@ -51,3 +56,10 @@ var (
 	// HumanVersion is the compiled version.
 	HumanVersion = Name + " " + Version + " (" + Commit + ", " + OSArch + ")"
 )
+
+func valueOrFallback(val string, fn func() string) string {
+	if val != "" {
+		return val
+	}
+	return fn()
+}
