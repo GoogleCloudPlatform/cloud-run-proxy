@@ -17,10 +17,12 @@ name: CI
 on:
   push:
     branches:
-    - 'main'
+      - 'main'
+      - 'release/**/*'
   pull_request:
     branches:
-    - 'main'
+      - 'main'
+      - 'release/**/*'
 
 jobs:
   test:
@@ -28,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: 'actions/checkout@v3'
+      - uses: 'actions/checkout@v4'
 
       - uses: 'actions/setup-go@v4'
         with:
@@ -37,8 +39,9 @@ jobs:
       - name: 'go-test'
         run: |-
            go test \
-            -shuffle=on \
             -count=1 \
             -race \
+            -shuffle=on \
             -timeout=5m \
+            -vet=all \
             ./...
