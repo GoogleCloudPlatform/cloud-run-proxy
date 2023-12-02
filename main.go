@@ -45,23 +45,32 @@ type contextKey string
 
 const contextKeyError = contextKey("error")
 
-const ADCHintMessage = "If you're trying to authenticate using gcloud, try running `gcloud auth login --update-adc` first then restart the proxy."
+const ADCHintMessage = "If you are trying to authenticate using gcloud, try running `gcloud auth login --update-adc` first then restart the proxy."
 
 var userAgent = version.Name + "/" + version.Version + " (" + version.OSArch + ")"
 
 var (
-	flagHost                   = flag.String("host", "", "Cloud Run host for which to proxy")
-	flagBind                   = flag.String("bind", "127.0.0.1:8080", "local host:port on which to listen")
-	flagAudience               = flag.String("audience", "", "override JWT audience value (aud)")
-	flagToken                  = flag.String("token", "", "override OIDC token")
-	flagPrependUserAgent       = flag.Bool("prepend-user-agent", true, "prepend a custom User-Agent header to requests")
-	flagServerUpTime           = flag.String("server-up-time", "", "Time duration the proxy server will run. For example, 1h, 1m30s. Empty means forever")
-	flagHttp2                  = flag.Bool("http2", false, "Handle http2 requests (allows grpc calls)")
-	flagUseAuthorizationHeader = flag.Bool("use-authorization-header", false, "Use Authorization header instead of X-Serverless-Authorization")
+	flagHost = flag.String("host", "",
+		"Cloud Run host for which to proxy")
+	flagBind = flag.String("bind", "127.0.0.1:8080",
+		"local host:port on which to listen")
+	flagAudience = flag.String("audience", "",
+		"override JWT audience value (aud)")
+	flagToken = flag.String("token", "",
+		"override OIDC token")
+	flagPrependUserAgent = flag.Bool("prepend-user-agent", true,
+		"prepend a custom User-Agent header to requests")
+	flagServerUpTime = flag.String("server-up-time", "",
+		"duration the proxy server will run. For example, 1h, 1m30s - empty means forever")
+	flagHttp2 = flag.Bool("http2", false,
+		"handle http2 requests (allows grpc calls)")
+	flagAuthorizationHeader = flag.String("authorization-header", "X-Serverless-Authorization",
+		"header to provide the bearer token")
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	if err := realMain(ctx); err != nil {
@@ -81,21 +90,28 @@ func realMain(ctx context.Context) error {
 		}
 	}
 
-	// Parse flags.
+	// Parse and validate flags.
 	flag.Parse()
+	var merr error
 	if *flagHost == "" {
-		return fmt.Errorf("missing -host")
+		merr = errors.Join(merr, fmt.Errorf("missing -host"))
 	}
 	if *flagBind == "" {
-		return fmt.Errorf("missing -bind")
+		merr = errors.Join(merr, fmt.Errorf("missing -bind"))
+	}
+	if *flagAuthorizationHeader == "" {
+		merr = errors.Join(merr, fmt.Errorf("missing -authorization-header"))
 	}
 	var d time.Duration
 	if *flagServerUpTime != "" {
 		var err error
 		d, err = time.ParseDuration(*flagServerUpTime)
 		if err != nil {
-			return fmt.Errorf("error parsing -server-up-time: %w", err)
+			merr = errors.Join(merr, fmt.Errorf("error parsing -server-up-time: %w", err))
 		}
+	}
+	if merr != nil {
+		return merr
 	}
 
 	// Build the remote host URL.
@@ -234,11 +250,7 @@ func buildProxy(host, bind *url.URL, tokenSource oauth2.TokenSource, enableHttp2
 		}
 
 		// Set the bearer token to be the id token
-		if *flagUseAuthorizationHeader {
-			r.Header.Set("Authorization", "Bearer "+idToken)
-		} else {
-			r.Header.Set("X-Serverless-Authorization", "Bearer "+idToken)
-		}
+		r.Header.Set(*flagAuthorizationHeader, "Bearer "+idToken)
 	}
 
 	// Configure error handling.
