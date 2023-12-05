@@ -43,7 +43,7 @@ SDK](https://cloud.google.com/sdk) (gcloud) for the proxy to pull your
 authentication token. You local user must also have Cloud Run Invoker
 permissions on the target service.
 
-1.  Install the proxy from the [Releases](releases) page or manually:
+1.  Install the proxy from the [Releases](https://github.com/GoogleCloudPlatform/cloud-run-proxy/releases) page or manually:
 
     ```sh
     go install github.com/GoogleCloudPlatform/cloud-run-proxy@main
