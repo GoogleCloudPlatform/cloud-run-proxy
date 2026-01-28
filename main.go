@@ -316,7 +316,7 @@ func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.Tok
 	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
 	if err != nil {
 		// Return any unexpected error.
-		if !strings.Contains(err.Error(), "credential must be service_account") {
+		if !strings.Contains(err.Error(), "unsupported credentials type") {
 			return nil, fmt.Errorf("failed to get idtoken source: %w", err)
 		}
 
