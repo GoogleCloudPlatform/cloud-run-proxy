@@ -67,7 +67,7 @@ func TestBuildProxy(t *testing.T) {
 		Host:   fmt.Sprintf("localhost:%d", testRandomPort(t)),
 	}
 
-	src, err := findTokenSource(ctx, "mytoken", "aud")
+	src, err := findTokenSource(ctx, "mytoken", "aud", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestBuildProxy(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		proxy.ServeHTTP(w, r)
-		if !called{
+		if !called {
 			t.Errorf("handler not called")
 		}
 	})
@@ -94,7 +94,7 @@ func TestFindTokenSource(t *testing.T) {
 	t.Run("static", func(t *testing.T) {
 		t.Parallel()
 
-		src, err := findTokenSource(ctx, "mytoken", "aud")
+		src, err := findTokenSource(ctx, "mytoken", "aud", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -184,7 +184,6 @@ func TestHttp2(t *testing.T) {
 		called = true
 	})
 
-
 	srv := httptest.NewUnstartedServer(mux)
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
@@ -199,7 +198,7 @@ func TestHttp2(t *testing.T) {
 		Host:   fmt.Sprintf("localhost:%d", testRandomPort(t)),
 	}
 
-	src, err := findTokenSource(ctx, "mytoken", "aud")
+	src, err := findTokenSource(ctx, "mytoken", "aud", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +213,7 @@ func TestHttp2(t *testing.T) {
 
 		proxy.ServeHTTP(w, r)
 
-		if !called{
+		if !called {
 			t.Errorf("handler not called")
 		}
 		defer srv.Close()
