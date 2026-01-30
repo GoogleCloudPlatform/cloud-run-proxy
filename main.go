@@ -39,6 +39,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/idtoken"
+	"google.golang.org/api/impersonate"
 )
 
 type contextKey string
@@ -66,6 +67,8 @@ var (
 		"handle http2 requests (allows grpc calls)")
 	flagAuthorizationHeader = flag.String("authorization-header", "X-Serverless-Authorization",
 		"header to provide the bearer token")
+	flagImpersonateServiceAccount = flag.String("impersonate-service-account", "",
+		"impersonate the specified service account to obtain ID tokens")
 )
 
 func main() {
@@ -130,7 +133,7 @@ func realMain(ctx context.Context) error {
 
 	// Get the best token source. Cloud Run expects the audience parameter to be
 	// the URL of the service.
-	tokenSource, err := findTokenSource(ctx, *flagToken, audience)
+	tokenSource, err := findTokenSource(ctx, *flagToken, audience, *flagImpersonateServiceAccount)
 	if err != nil {
 		return fmt.Errorf("failed to find token source: %w", err)
 	}
@@ -299,13 +302,26 @@ func createServer(bind *url.URL, proxy *httputil.ReverseProxy, enableHttp2 bool)
 
 // findTokenSource fetches the reusable/cached oauth2 token source. If rawToken
 // is provided, that token is used as a static value and the audience parameter
-// is ignored. Othwerise, this attempts to get the renewable token from the
+// is ignored. Otherwise, this attempts to get the renewable token from the
 // environment (via Application Default Credentials).
-func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.TokenSource, error) {
+func findTokenSource(ctx context.Context, rawToken, audience, impersonateServiceAccount string) (oauth2.TokenSource, error) {
 	// Prefer supplied value, usually from the flag.
 	if rawToken != "" {
 		token := &oauth2.Token{AccessToken: rawToken}
 		return oauth2.StaticTokenSource(token), nil
+	}
+
+	// If impersonation is requested, use the impersonate package to get ID tokens.
+	if impersonateServiceAccount != "" {
+		tokenSource, err := impersonate.IDTokenSource(ctx, impersonate.IDTokenConfig{
+			TargetPrincipal: impersonateServiceAccount,
+			Audience:        audience,
+			IncludeEmail:    true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create impersonated token source: %w", err)
+		}
+		return tokenSource, nil
 	}
 
 	// Try to use the idtoken package, which will use the metadata service.
@@ -316,7 +332,7 @@ func findTokenSource(ctx context.Context, rawToken, audience string) (oauth2.Tok
 	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
 	if err != nil {
 		// Return any unexpected error.
-		if !strings.Contains(err.Error(), "credential must be service_account") {
+		if !strings.Contains(err.Error(), "unsupported credentials type") {
 			return nil, fmt.Errorf("failed to get idtoken source: %w", err)
 		}
 
